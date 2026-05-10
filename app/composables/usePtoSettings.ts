@@ -1,12 +1,16 @@
 import { computed, onMounted, ref, watch } from 'vue'
+import { defaultPaidHolidayIds, isPaidHoliday } from '~/utils/holidays'
 
 export type AccrualFrequency = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly'
 
 export type PtoSettings = {
-  accrualAmount: number
-  accrualFrequency: AccrualFrequency
+  accrualAmount: number | null
+  accrualFrequency: AccrualFrequency | ''
   balanceAdjustments: BalanceAdjustment[]
-  startingBalance: number
+  customPaidHolidayDates: string[]
+  initialSetupComplete: boolean
+  paidHolidayIds: string[]
+  startingBalance: number | null
   startingDate: string
   scheduledPto: Record<string, number>
 }
@@ -14,18 +18,21 @@ export type PtoSettings = {
 export type BalanceAdjustment = {
   id: string
   date: string
-  hours: number
+  balance: number
   note: string
 }
 
 const storageKey = 'pto-planner-settings'
 
 const defaultSettings: PtoSettings = {
-  accrualAmount: 4,
-  accrualFrequency: 'biweekly',
+  accrualAmount: null,
+  accrualFrequency: '',
   balanceAdjustments: [],
-  startingBalance: 40,
-  startingDate: toDateInputValue(new Date()),
+  customPaidHolidayDates: [],
+  initialSetupComplete: false,
+  paidHolidayIds: [...defaultPaidHolidayIds],
+  startingBalance: null,
+  startingDate: '',
   scheduledPto: {}
 }
 
@@ -57,7 +64,7 @@ export function usePtoSettings() {
       monthly: 'Monthly'
     }
 
-    return labels[settings.value.accrualFrequency]
+    return settings.value.accrualFrequency ? labels[settings.value.accrualFrequency] : 'Not set'
   })
 
   return {
@@ -67,22 +74,31 @@ export function usePtoSettings() {
     getAccrualDatesBetween,
     getScheduledPtoHours,
     setScheduledPtoHours,
+    resetBalanceCorrections,
+    resetPlannedPto,
     resetSettings
   }
 }
 
 export function calculateBalanceOn(targetDate: Date) {
+  if (!hasCompleteInitialSetup(settings.value)) return 0
+
   const startDate = parseLocalDate(settings.value.startingDate)
-  if (targetDate < startDate) return settings.value.startingBalance
+  const startingBalance = Number(settings.value.startingBalance ?? 0)
+  const accrualAmount = Number(settings.value.accrualAmount ?? 0)
+  if (targetDate < startDate) return startingBalance
 
-  const accruedHours = getAccrualDatesBetween(addDays(startDate, 1), targetDate).length * settings.value.accrualAmount
-  const adjustmentHours = getBalanceAdjustmentsBetween(startDate, targetDate)
-  const scheduledHours = getScheduledPtoHoursBetween(addDays(startDate, 1), targetDate)
+  const anchor = getBalanceAnchor(startDate, targetDate, startingBalance)
+  const calculationStartDate = addDays(anchor.date, 1)
+  const accruedHours = getAccrualDatesBetween(calculationStartDate, targetDate).length * accrualAmount
+  const scheduledHours = getScheduledPtoHoursBetween(calculationStartDate, targetDate)
 
-  return settings.value.startingBalance + accruedHours + adjustmentHours - scheduledHours
+  return anchor.balance + accruedHours - scheduledHours
 }
 
 export function getAccrualDatesBetween(startDate: Date, endDate: Date) {
+  if (!hasCompleteInitialSetup(settings.value)) return []
+
   const anchorDate = parseLocalDate(settings.value.startingDate)
   const dates: Date[] = []
   let cursor = new Date(anchorDate)
@@ -92,7 +108,7 @@ export function getAccrualDatesBetween(startDate: Date, endDate: Date) {
       dates.push(new Date(cursor))
     }
 
-    cursor = nextAccrualDate(cursor, settings.value.accrualFrequency)
+    cursor = nextAccrualDate(cursor, settings.value.accrualFrequency as AccrualFrequency)
   }
 
   return dates
@@ -102,11 +118,28 @@ export function resetSettings() {
   settings.value = {
     ...defaultSettings,
     balanceAdjustments: [],
+    customPaidHolidayDates: [],
     scheduledPto: {}
   }
 }
 
+export function resetPlannedPto() {
+  settings.value = {
+    ...settings.value,
+    scheduledPto: {}
+  }
+}
+
+export function resetBalanceCorrections() {
+  settings.value = {
+    ...settings.value,
+    balanceAdjustments: []
+  }
+}
+
 export function getScheduledPtoHours(date: Date) {
+  if (isPaidHoliday(date, settings.value.paidHolidayIds, settings.value.customPaidHolidayDates)) return 0
+
   return settings.value.scheduledPto[toDateInputValue(date)] ?? 0
 }
 
@@ -114,7 +147,9 @@ export function setScheduledPtoHours(date: Date, hours: number) {
   const dateKey = toDateInputValue(date)
   const nextScheduledPto = { ...settings.value.scheduledPto }
 
-  if (hours > 0) {
+  if (isPaidHoliday(date, settings.value.paidHolidayIds, settings.value.customPaidHolidayDates)) {
+    delete nextScheduledPto[dateKey]
+  } else if (hours > 0) {
     nextScheduledPto[dateKey] = hours
   } else {
     delete nextScheduledPto[dateKey]
@@ -131,17 +166,25 @@ function getScheduledPtoHoursBetween(startDate: Date, endDate: Date) {
     const date = parseLocalDate(dateKey)
 
     if (date < startDate || date > endDate) return total
+    if (isPaidHoliday(date, settings.value.paidHolidayIds, settings.value.customPaidHolidayDates)) return total
     return total + hours
   }, 0)
 }
 
-function getBalanceAdjustmentsBetween(startDate: Date, endDate: Date) {
-  return settings.value.balanceAdjustments.reduce((total, adjustment) => {
+function getBalanceAnchor(startDate: Date, targetDate: Date, startingBalance: number) {
+  return settings.value.balanceAdjustments.reduce((latest, adjustment) => {
     const date = parseLocalDate(adjustment.date)
 
-    if (date < startDate || date > endDate) return total
-    return total + adjustment.hours
-  }, 0)
+    if (date < startDate || date > targetDate || date < latest.date) return latest
+
+    return {
+      date,
+      balance: adjustment.balance
+    }
+  }, {
+    date: startDate,
+    balance: startingBalance
+  })
 }
 
 function nextAccrualDate(date: Date, frequency: AccrualFrequency) {
@@ -155,14 +198,77 @@ function nextAccrualDate(date: Date, frequency: AccrualFrequency) {
 }
 
 function normalizeSettings(value: Partial<PtoSettings>) {
-  return {
-    accrualAmount: Number(value.accrualAmount ?? defaultSettings.accrualAmount),
-    accrualFrequency: value.accrualFrequency ?? defaultSettings.accrualFrequency,
+  const shouldClearLegacyDefaults = value.initialSetupComplete === false &&
+    value.startingBalance === 40 &&
+    value.accrualAmount === 4 &&
+    value.accrualFrequency === 'biweekly' &&
+    Boolean(value.startingDate) &&
+    normalizeBalanceAdjustments(value.balanceAdjustments).length === 0 &&
+    Object.keys(value.scheduledPto ?? {}).length === 0
+
+  if (shouldClearLegacyDefaults) {
+    return { ...defaultSettings }
+  }
+
+  const normalized = {
+    accrualAmount: normalizeOptionalNumber(value.accrualAmount),
+    accrualFrequency: normalizeAccrualFrequency(value.accrualFrequency),
     balanceAdjustments: normalizeBalanceAdjustments(value.balanceAdjustments),
-    startingBalance: Number(value.startingBalance ?? defaultSettings.startingBalance),
+    customPaidHolidayDates: normalizeDateKeys(value.customPaidHolidayDates),
+    paidHolidayIds: normalizePaidHolidayIds(value.paidHolidayIds),
+    startingBalance: normalizeOptionalNumber(value.startingBalance),
+    initialSetupComplete: false,
     startingDate: value.startingDate ?? defaultSettings.startingDate,
     scheduledPto: value.scheduledPto ?? {}
   }
+
+  return {
+    ...normalized,
+    initialSetupComplete: Boolean(value.initialSetupComplete) && hasCompleteInitialSetup(normalized)
+  }
+}
+
+export function hasCompleteInitialSetup(value: Pick<PtoSettings, 'accrualAmount' | 'accrualFrequency' | 'startingBalance' | 'startingDate'>) {
+  return hasFiniteNumber(value.startingBalance) &&
+    hasFiniteNumber(value.accrualAmount) &&
+    Boolean(value.accrualFrequency) &&
+    Boolean(value.startingDate)
+}
+
+function normalizeOptionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : null
+}
+
+function normalizeAccrualFrequency(value: unknown): AccrualFrequency | '' {
+  if (value === 'weekly' || value === 'biweekly' || value === 'semimonthly' || value === 'monthly') {
+    return value
+  }
+
+  return ''
+}
+
+function normalizePaidHolidayIds(value: unknown) {
+  if (!Array.isArray(value)) return [...defaultPaidHolidayIds]
+
+  return value.filter((id): id is string =>
+    typeof id === 'string' && defaultPaidHolidayIds.includes(id)
+  )
+}
+
+function normalizeDateKeys(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  return value.filter((dateKey): dateKey is string =>
+    typeof dateKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
+  )
+}
+
+function hasFiniteNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return false
+  return Number.isFinite(Number(value))
 }
 
 function normalizeBalanceAdjustments(value?: BalanceAdjustment[]) {
@@ -173,9 +279,16 @@ function normalizeBalanceAdjustments(value?: BalanceAdjustment[]) {
     .map((adjustment) => ({
       id: adjustment.id || createId(),
       date: adjustment.date,
-      hours: Number(adjustment.hours || 0),
+      balance: normalizeAdjustmentBalance(adjustment),
       note: adjustment.note || ''
     }))
+}
+
+function normalizeAdjustmentBalance(adjustment: BalanceAdjustment | (Partial<BalanceAdjustment> & { hours?: number })) {
+  const balance = 'balance' in adjustment ? adjustment.balance : adjustment.hours
+  const numericBalance = Number(balance ?? 0)
+
+  return Number.isFinite(numericBalance) ? numericBalance : 0
 }
 
 export function createId() {
@@ -187,7 +300,10 @@ export function createId() {
 }
 
 export function parseLocalDate(value: string) {
+  if (!value) return startOfDay(new Date())
+
   const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return startOfDay(new Date())
   return new Date(year, month - 1, day)
 }
 
