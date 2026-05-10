@@ -4,7 +4,7 @@
     :title="headerTitle"
   />
 
-  <main class="mx-auto min-h-screen w-full max-w-7xl px-4 pb-20 pt-24 sm:px-6 lg:px-8">
+  <main class="mx-auto min-h-screen w-full max-w-screen-sm lg:max-w-5xl px-4 pb-20 pt-24 sm:px-6 lg:px-8">
     <SetupRequiredCard v-if="!hasInitialSetup" />
 
     <template v-else>
@@ -42,7 +42,7 @@
         />
       </section>
 
-      <section class="mt-5 hidden max-h-[calc(100vh-14rem)] overflow-y-auto pr-1 lg:grid lg:grid-cols-3 lg:gap-5 2xl:grid-cols-4">
+      <section class="mt-5 hidden max-h-[calc(100vh-14rem)] overflow-y-auto pr-1 lg:grid lg:grid-cols-2 lg:gap-5">
         <CalendarMonth
           v-for="month in desktopMonths"
           :key="month.key"

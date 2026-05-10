@@ -1,4 +1,4 @@
-import { appendHeader, createError, getHeader, getRequestURL, readRawBody, type H3Event } from 'h3'
+import { appendHeader, createError, deleteCookie, getHeader, getRequestURL, readRawBody, type H3Event } from 'h3'
 import { loadLocalEnvFiles } from './localEnv'
 
 export type NeonAuthSession = {
@@ -47,25 +47,26 @@ const getNeonAuthBaseUrl = (() => {
 export { getNeonAuthBaseUrl }
 
 export async function proxyNeonAuthRequest(event: H3Event, path: string) {
+  const requestBody = allowsBody(event.method) ? await readRawBody(event, false) : undefined
   const response = await fetch(`${getNeonAuthBaseUrl()}${path}`, {
-    body: allowsBody(event.method) ? await readRawBody(event, false) : undefined,
-    headers: getForwardedHeaders(event),
+    body: requestBody,
+    headers: getForwardedHeaders(event, Boolean(requestBody)),
     method: event.method,
   })
 
   forwardSetCookieHeaders(event, response)
 
-  const body = await parseResponseBody(response)
+  const responseBody = await parseResponseBody(response)
 
   if (!response.ok) {
     throw createError({
-      data: body,
+      data: responseBody,
       statusCode: response.status,
-      statusMessage: extractMessage(body) ?? response.statusText,
+      statusMessage: extractMessage(responseBody) ?? response.statusText,
     })
   }
 
-  return body
+  return responseBody
 }
 
 export async function getNeonAuthSession(event: H3Event): Promise<NeonAuthSession | null> {
@@ -88,9 +89,31 @@ export async function getNeonAuthSession(event: H3Event): Promise<NeonAuthSessio
   return body?.data ?? body ?? null
 }
 
+export function clearNeonAuthCookies(event: H3Event) {
+  const cookieNames = new Set([
+    'better-auth.session_token',
+    '__Secure-better-auth.session_token',
+    'better-auth.csrf_token',
+    '__Secure-better-auth.csrf_token',
+    'better-auth.callback_url',
+    '__Secure-better-auth.callback_url'
+  ])
+
+  for (const cookieName of getRequestCookieNames(event)) {
+    if (cookieName.includes('better-auth')) {
+      cookieNames.add(cookieName)
+    }
+  }
+
+  for (const cookieName of cookieNames) {
+    expireCookie(event, cookieName, '/')
+    expireCookie(event, cookieName, '/api/auth')
+  }
+}
+
 // --- Helpers ---
 
-function getForwardedHeaders(event: H3Event): Record<string, string> {
+function getForwardedHeaders(event: H3Event, hasBody = false): Record<string, string> {
   const headers: Record<string, string> = { accept: 'application/json' }
 
   const forward = (name: string, key = name) => {
@@ -98,7 +121,9 @@ function getForwardedHeaders(event: H3Event): Record<string, string> {
     if (val) headers[key] = val
   }
 
-  forward('content-type')
+  if (hasBody) {
+    forward('content-type')
+  }
   forward('cookie')
   forward('referer')
   forward('user-agent')
@@ -125,6 +150,24 @@ function forwardSetCookieHeaders(event: H3Event, response: Response) {
 
   for (const cookie of cookies) {
     appendHeader(event, 'set-cookie', stripCookieDomain(cookie))
+  }
+}
+
+function getRequestCookieNames(event: H3Event) {
+  const cookieHeader = getHeader(event, 'cookie')
+  if (!cookieHeader) return []
+
+  return cookieHeader
+    .split(';')
+    .map((cookie) => cookie.trim().split('=')[0])
+    .filter(Boolean)
+}
+
+function expireCookie(event: H3Event, name: string, path: string) {
+  deleteCookie(event, name, { path })
+
+  if (name.startsWith('__Secure-')) {
+    deleteCookie(event, name, { path, secure: true })
   }
 }
 
