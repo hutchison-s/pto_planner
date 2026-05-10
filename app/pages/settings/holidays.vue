@@ -51,7 +51,7 @@ import { computed, ref } from 'vue'
 import { holidayDefinitions } from '~/utils/holidays'
 
 const router = useRouter()
-const { settings } = usePtoSettings()
+const { saveSettingsNow, settings } = usePtoSettings()
 const draftPaidHolidayIds = ref([...settings.value.paidHolidayIds])
 const savedSnapshot = computed(() => JSON.stringify([...settings.value.paidHolidayIds].sort()))
 const draftSnapshot = computed(() => JSON.stringify([...draftPaidHolidayIds.value].sort()))
@@ -64,12 +64,13 @@ function toggleHoliday(id: string) {
     : [...draftPaidHolidayIds.value, id]
 }
 
-function save() {
+async function save() {
   settings.value = {
     ...settings.value,
     paidHolidayIds: draftPaidHolidayIds.value
   }
 
+  await saveSettingsNow()
   allowNextNavigation()
   router.push('/settings')
 }

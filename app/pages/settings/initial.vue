@@ -152,7 +152,7 @@ import { computed, ref } from 'vue'
 import { hasCompleteInitialSetup, type AccrualFrequency, type SemimonthlyAccrualMode } from '~/composables/usePtoSettings'
 
 const router = useRouter()
-const { settings } = usePtoSettings()
+const { saveSettingsNow, settings } = usePtoSettings()
 const draft = ref({
   accrualAmount: settings.value.accrualAmount,
   accrualFrequency: settings.value.accrualFrequency,
@@ -186,7 +186,7 @@ const weekdayOptions = [
   { label: 'Saturday', value: 6 }
 ]
 
-function save() {
+async function save() {
   const nextSettings = {
     ...settings.value,
     accrualAmount: normalizeOptionalNumber(draft.value.accrualAmount),
@@ -204,6 +204,7 @@ function save() {
     initialSetupComplete: hasCompleteInitialSetup(nextSettings)
   }
 
+  await saveSettingsNow()
   allowNextNavigation()
   router.push('/settings')
 }

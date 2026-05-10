@@ -131,7 +131,7 @@ import type { BalanceAdjustment } from '~/composables/usePtoSettings'
 import type { AdjustmentDraft } from '~/types/settings'
 
 const router = useRouter()
-const { settings } = usePtoSettings()
+const { saveSettingsNow, settings } = usePtoSettings()
 const draftAdjustments = ref<BalanceAdjustment[]>(settings.value.balanceAdjustments.map((adjustment) => ({ ...adjustment })))
 const editingAdjustmentId = ref<string | null>(null)
 const adjustmentDraft = ref<AdjustmentDraft>(createAdjustmentDraft())
@@ -187,12 +187,13 @@ function resetAdjustmentDraft() {
   adjustmentDraft.value = createAdjustmentDraft()
 }
 
-function save() {
+async function save() {
   settings.value = {
     ...settings.value,
     balanceAdjustments: draftAdjustments.value
   }
 
+  await saveSettingsNow()
   allowNextNavigation()
   router.push('/settings')
 }

@@ -84,6 +84,7 @@ const {
   calculateBalanceOn,
   getAccrualDatesBetween,
   getScheduledPtoHours,
+  saveSettingsNow,
   setScheduledPtoHours
 } = usePtoSettings()
 
@@ -166,6 +167,7 @@ function toggleScheduledPto(hours: number) {
   if (isSelectedDayPaidHoliday.value) return
 
   selectedScheduledHours.value = selectedScheduledHours.value === hours ? 0 : hours
+  void saveSettingsNow()
 }
 
 function togglePaidHolidayForSelectedDay() {
@@ -179,6 +181,7 @@ function togglePaidHolidayForSelectedDay() {
     ...settings.value,
     customPaidHolidayDates
   }
+  void saveSettingsNow()
 }
 
 function isBeforeMonth(left: Date, right: Date) {
@@ -199,11 +202,13 @@ function closeHoursModal() {
 
 function saveCustomHours() {
   selectedScheduledHours.value = Math.max(0, Number(customHoursDraft.value) || 0)
+  void saveSettingsNow()
   closeHoursModal()
 }
 
 function clearScheduledPto() {
   selectedScheduledHours.value = 0
+  void saveSettingsNow()
   closeHoursModal()
 }
 

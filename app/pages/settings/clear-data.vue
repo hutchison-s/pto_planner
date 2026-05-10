@@ -8,7 +8,7 @@
     </h1>
 
     <div class="mt-5 rounded-card border border-orange-200 bg-brand-orangeSoft px-4 py-3 text-sm text-brand-ink">
-      Reset actions update data stored in this browser and cannot be undone. Choose the smallest reset that matches what you need to clear.
+      Reset actions update data stored in your account and cannot be undone. Choose the smallest reset that matches what you need to clear.
     </div>
 
     <section class="mt-5 grid gap-3">
@@ -70,7 +70,7 @@ const resetOptions = [
   {
     id: 'all-data',
     title: 'Reset all',
-    description: 'Clears initial setup, balance corrections, paid holidays, and scheduled PTO from this browser.',
+    description: 'Clears initial setup, balance corrections, paid holidays, and scheduled PTO from your account.',
     buttonLabel: 'Reset all',
     action: clearAllData
   }

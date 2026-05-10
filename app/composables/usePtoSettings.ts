@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { defaultPaidHolidayIds, isPaidHoliday } from '~/utils/holidays'
 
 export type AccrualFrequency = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly'
@@ -86,7 +86,8 @@ export function usePtoSettings() {
     setScheduledPtoHours,
     resetBalanceCorrections,
     resetPlannedPto,
-    resetSettings
+    resetSettings,
+    saveSettingsNow
   }
 }
 
@@ -320,16 +321,29 @@ function scheduleRemoteSave(value: PtoSettings) {
   }, 500)
 }
 
+async function saveSettingsNow(value = settings.value) {
+  await nextTick()
+
+  if (remoteSaveTimer) {
+    clearTimeout(remoteSaveTimer)
+    remoteSaveTimer = null
+  }
+
+  return saveRemoteSettings(value)
+}
+
 async function saveRemoteSettings(value: PtoSettings) {
   try {
-    await $fetch('/api/pto-settings', {
+    const response = await $fetch<{ settings: PtoSettings }>('/api/pto-settings', {
       method: 'PUT',
       body: {
         settings: value
       }
     })
+    return response.settings
   } catch (error) {
     console.warn('[pto-settings] Unable to save settings to database:', error)
+    return null
   }
 }
 
