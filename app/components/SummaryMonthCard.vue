@@ -1,7 +1,7 @@
 <template>
   <NuxtLink
     class="block rounded-card border border-brand-line bg-brand-panel p-3 shadow-card transition hover:border-brand-blue hover:bg-brand-blueSoft focus:outline-none focus:ring-4 focus:ring-brand-line"
-    :to="{ path: '/', query: { month: month.key } }"
+    :to="{ path: '/planner', query: { month: month.key } }"
   >
     <div class="mb-3 flex items-center justify-between gap-3">
       <h2 class="text-base font-bold tracking-normal text-brand-ink">
@@ -49,7 +49,7 @@
           class="flex min-h-8 items-center justify-end rounded-lg border border-brand-lineSoft bg-white px-1 text-xs font-bold"
           :class="week.endBalance <= 0 ? 'text-red-700' : week.endBalance < fullDayHours ? 'text-brand-orange' : 'text-brand-ink'"
         >
-          {{ formatHours(week.endBalance) }}h
+          {{ formatEowHours(week.endBalance) }}h
         </div>
       </div>
     </div>
@@ -116,6 +116,13 @@ function formatHours(value: number) {
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 2,
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2
+  }).format(value)
+}
+
+function formatEowHours(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1
   }).format(value)
 }
 </script>

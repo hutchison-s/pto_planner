@@ -72,8 +72,8 @@ defineProps<{
 const route = useRoute()
 const isMenuOpen = ref(false)
 const navLinks = [
-  { label: 'Planner', to: '/' },
-  { label: 'Summary', to: '/summary' },
+  { label: 'Summary', to: '/' },
+  { label: 'Planner', to: '/planner' },
   { label: 'About', to: '/about' },
   { label: 'Settings', to: '/settings' }
 ]

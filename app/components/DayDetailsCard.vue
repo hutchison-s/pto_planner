@@ -121,8 +121,8 @@ function ptoOptionClass(isSelected: boolean) {
   return [
     baseClass,
     isSelected
-      ? 'border border-brand-blue bg-brand-blue text-white'
-      : 'border border-brand-line bg-white text-brand-blue hover:bg-brand-blueSoft'
+      ? 'border border-brand-magenta bg-brand-magenta text-white'
+      : 'border border-brand-magenta bg-white text-brand-magenta hover:bg-fuchsia-50'
   ]
 }
 </script>

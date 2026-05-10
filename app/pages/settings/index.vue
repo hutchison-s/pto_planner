@@ -74,7 +74,7 @@ const sections = computed(() => [
 const initialSummary = computed(() => {
   if (!settings.value.initialSetupComplete) return 'Not set up yet.'
 
-  return `${formatHours(Number(settings.value.startingBalance ?? 0))}h starting ${formatDate(settings.value.startingDate)}, accruing ${formatHours(Number(settings.value.accrualAmount ?? 0))}h ${frequencyLabelFor(settings.value.accrualFrequency).toLowerCase()}.`
+  return `${formatHours(Number(settings.value.startingBalance ?? 0))}h starting ${formatDate(settings.value.startingDate)}, accruing ${formatHours(Number(settings.value.accrualAmount ?? 0))}h ${accrualFrequencySummary.value}.`
 })
 
 const adjustmentsSummary = computed(() => {
@@ -99,5 +99,21 @@ function formatHours(value: number) {
     maximumFractionDigits: 2,
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2
   }).format(value)
+}
+
+const accrualFrequencySummary = computed(() => {
+  if (settings.value.accrualFrequency !== 'semimonthly') {
+    return frequencyLabelFor(settings.value.accrualFrequency).toLowerCase()
+  }
+
+  if (settings.value.semimonthlyMode === 'dayOfWeek') {
+    return `twice a month on the first and third ${weekdayLabelFor(settings.value.semimonthlyWeekday)}`
+  }
+
+  return `twice a month on days ${settings.value.semimonthlyFirstDay} and ${settings.value.semimonthlySecondDay}`
+})
+
+function weekdayLabelFor(value: number) {
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][value] ?? 'weekday'
 }
 </script>
