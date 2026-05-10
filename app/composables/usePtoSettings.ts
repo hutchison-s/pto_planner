@@ -27,8 +27,6 @@ export type BalanceAdjustment = {
   note: string
 }
 
-const storageKey = 'pto-planner-settings'
-
 const defaultSettings: PtoSettings = {
   accrualAmount: null,
   accrualFrequency: '',
@@ -47,23 +45,26 @@ const defaultSettings: PtoSettings = {
 
 const settings = ref<PtoSettings>({ ...defaultSettings })
 const isReady = ref(false)
+let hasStartedPersistence = false
+let remoteSaveTimer: ReturnType<typeof setTimeout> | null = null
+let isApplyingRemoteSettings = false
 
 export function usePtoSettings() {
-  onMounted(() => {
+  onMounted(async () => {
     if (isReady.value) return
 
-    const storedSettings = window.localStorage.getItem(storageKey)
-    if (storedSettings) {
-      settings.value = normalizeSettings(JSON.parse(storedSettings))
-    }
-
+    await hydrateRemoteSettings()
     isReady.value = true
   })
 
-  watch(settings, (value) => {
-    if (!isReady.value) return
-    window.localStorage.setItem(storageKey, JSON.stringify(value))
-  }, { deep: true })
+  if (!hasStartedPersistence) {
+    hasStartedPersistence = true
+
+    watch(settings, (value) => {
+      if (!isReady.value) return
+      scheduleRemoteSave(value)
+    }, { deep: true })
+  }
 
   const frequencyLabel = computed(() => {
     const labels: Record<AccrualFrequency, string> = {
@@ -290,6 +291,45 @@ function normalizeSettings(value: Partial<PtoSettings>) {
   return {
     ...normalized,
     initialSetupComplete: Boolean(value.initialSetupComplete) && hasCompleteInitialSetup(normalized)
+  }
+}
+
+async function hydrateRemoteSettings() {
+  try {
+    const response = await $fetch<{ settings: PtoSettings | null }>('/api/pto-settings')
+    if (!response.settings) return
+
+    isApplyingRemoteSettings = true
+    settings.value = normalizeSettings(response.settings)
+  } catch (error) {
+    console.warn('[pto-settings] Unable to load settings from database:', error)
+  } finally {
+    isApplyingRemoteSettings = false
+  }
+}
+
+function scheduleRemoteSave(value: PtoSettings) {
+  if (isApplyingRemoteSettings) return
+
+  if (remoteSaveTimer) {
+    clearTimeout(remoteSaveTimer)
+  }
+
+  remoteSaveTimer = setTimeout(() => {
+    void saveRemoteSettings(value)
+  }, 500)
+}
+
+async function saveRemoteSettings(value: PtoSettings) {
+  try {
+    await $fetch('/api/pto-settings', {
+      method: 'PUT',
+      body: {
+        settings: value
+      }
+    })
+  } catch (error) {
+    console.warn('[pto-settings] Unable to save settings to database:', error)
   }
 }
 
