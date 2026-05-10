@@ -5,7 +5,7 @@
   />
 
   <main class="mx-auto min-h-screen w-full max-w-3xl xl:max-w-[1600px] px-4 pb-8 pt-24 sm:px-6">
-    <SetupRequiredCard v-if="!hasInitialSetup" />
+    <SetupRequiredCard v-if="authUser?.id && !hasInitialSetup" />
 
     <section v-else class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
       <SummaryMonthCard
@@ -22,6 +22,8 @@ import { computed } from 'vue'
 import type { CalendarDay } from '~/types/calendar'
 import type { SummaryMonthData, SummaryWeek } from '~/types/summary'
 import { getHolidayLabel, isPaidHoliday } from '~/utils/holidays'
+
+const { authUser, isAuthReady } = useAuthSession()
 
 const {
   settings,
