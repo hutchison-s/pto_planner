@@ -2,9 +2,13 @@
   <header class="fixed inset-x-0 top-0 z-30 border-b border-brand-line bg-white/95 px-4 py-3 shadow-soft backdrop-blur">
     <div class="mx-auto flex max-w-7xl items-center justify-between gap-3">
       <div class="flex items-center gap-3">
-        <div class="text-3xl font-black leading-none tracking-normal text-brand-blue">
+        <NuxtLink
+          class="text-3xl font-black leading-none tracking-normal text-brand-blue transition hover:text-brand-blueDark focus:outline-none focus:ring-4 focus:ring-brand-line"
+          aria-label="Go to Summary"
+          to="/"
+        >
           PTO
-        </div>
+        </NuxtLink>
         <div>
           <p class="text-sm font-bold leading-tight text-brand-ink">
             {{ title }}

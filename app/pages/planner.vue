@@ -31,11 +31,7 @@
         :ranges="zeroBalanceRanges"
       />
 
-      <section
-        class="mt-5 lg:hidden"
-        @touchstart.passive="handleTouchStart"
-        @touchend.passive="handleTouchEnd"
-      >
+      <section class="mt-5 lg:hidden">
         <CalendarMonth
           :can-go-previous="canBrowsePreviousMonth"
           :focused-month-key="selectedMonth.key"
@@ -98,7 +94,6 @@ const halfDayHours = 4
 const initialRouteDate = getRouteMonthDate(route.query.month)
 const selectedDate = ref(startOfMonth(initialRouteDate))
 const selectedDay = ref(initialRouteDate)
-const touchStartX = ref<number | null>(null)
 const isHoursModalOpen = ref(false)
 const customHoursDraft = ref(0)
 
@@ -210,20 +205,6 @@ function saveCustomHours() {
 function clearScheduledPto() {
   selectedScheduledHours.value = 0
   closeHoursModal()
-}
-
-function handleTouchStart(event: TouchEvent) {
-  touchStartX.value = event.changedTouches[0]?.clientX ?? null
-}
-
-function handleTouchEnd(event: TouchEvent) {
-  if (touchStartX.value === null) return
-
-  const distance = event.changedTouches[0]?.clientX - touchStartX.value
-  touchStartX.value = null
-
-  if (Math.abs(distance) < 50) return
-  changeMonth(distance < 0 ? 1 : -1)
 }
 
 function buildMonth(date: Date): CalendarMonthData {
