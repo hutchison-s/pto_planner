@@ -4,10 +4,10 @@
     title="Summary"
   />
 
-  <main class="mx-auto min-h-screen w-full max-w-3xl xl:max-w-[1600px] px-4 pb-8 pt-24 sm:px-6">
+  <main class="mx-auto min-h-screen w-full max-w-6xl px-4 pb-8 pt-24 sm:px-6">
     <SetupRequiredCard v-if="authUser?.id && !hasInitialSetup" />
 
-    <section v-else class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+    <section v-else class="grid gap-4 lg:grid-cols-2">
       <SummaryMonthCard
         v-for="month in summaryMonths"
         :key="month.key"

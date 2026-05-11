@@ -1,5 +1,6 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { defaultPaidHolidayIds, isPaidHoliday } from '~/utils/holidays'
+import { showSaveError, showSaved, showSaving } from './useSaveToast'
 
 export type AccrualFrequency = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly'
 export type SemimonthlyAccrualMode = 'daysOfMonth' | 'dayOfWeek'
@@ -333,6 +334,8 @@ async function saveSettingsNow(value = settings.value) {
 }
 
 async function saveRemoteSettings(value: PtoSettings) {
+  const saveToastVersion = showSaving()
+
   try {
     const response = await $fetch<{ settings: PtoSettings }>('/api/pto-settings', {
       method: 'PUT',
@@ -340,9 +343,11 @@ async function saveRemoteSettings(value: PtoSettings) {
         settings: value
       }
     })
+    showSaved(saveToastVersion)
     return response.settings
   } catch (error) {
     console.warn('[pto-settings] Unable to save settings to database:', error)
+    showSaveError(saveToastVersion)
     return null
   }
 }
