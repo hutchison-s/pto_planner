@@ -14,7 +14,7 @@
           v-model.number="draft.startingBalance"
           class="rounded-card border border-brand-line bg-white px-4 py-3 text-base shadow-card outline-none transition focus:border-brand-blue focus:ring-4 focus:ring-brand-line"
           min="0"
-          step="0.25"
+          step="0.01"
           type="number"
         >
       </label>
@@ -34,7 +34,7 @@
           v-model.number="draft.accrualAmount"
           class="rounded-card border border-brand-line bg-white px-4 py-3 text-base shadow-card outline-none transition focus:border-brand-blue focus:ring-4 focus:ring-brand-line"
           min="0"
-          step="0.25"
+          step="0.01"
           type="number"
         >
       </label>

@@ -31,7 +31,7 @@
           v-model.number="settings.startingBalance"
           class="rounded-card border border-brand-line bg-white px-4 py-3 text-base shadow-card outline-none transition focus:border-brand-blue focus:ring-4 focus:ring-brand-line"
           min="0"
-          step="0.25"
+          step="0.01"
           type="number"
           @input="$emit('setupChange')"
         >
@@ -53,7 +53,7 @@
           v-model.number="settings.accrualAmount"
           class="rounded-card border border-brand-line bg-white px-4 py-3 text-base shadow-card outline-none transition focus:border-brand-blue focus:ring-4 focus:ring-brand-line"
           min="0"
-          step="0.25"
+          step="0.01"
           type="number"
           @input="$emit('setupChange')"
         >
