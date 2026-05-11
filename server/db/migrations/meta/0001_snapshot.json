@@ -1,0 +1,393 @@
+{
+  "id": "b61e1a30-bc1a-461d-bd09-9d3bb4c62aee",
+  "prevId": "a658f538-18ff-4da5-afea-f4fe3db94b57",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.accrual_adjustments": {
+      "name": "accrual_adjustments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjustment_date": {
+          "name": "adjustment_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accrual_amount": {
+          "name": "accrual_amount",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accrual_frequency": {
+          "name": "accrual_frequency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "semimonthly_first_day": {
+          "name": "semimonthly_first_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "semimonthly_mode": {
+          "name": "semimonthly_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "semimonthly_second_day": {
+          "name": "semimonthly_second_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "semimonthly_weekday": {
+          "name": "semimonthly_weekday",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "accrual_adjustments_user_id_pto_settings_user_id_fk": {
+          "name": "accrual_adjustments_user_id_pto_settings_user_id_fk",
+          "tableFrom": "accrual_adjustments",
+          "tableTo": "pto_settings",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.balance_corrections": {
+      "name": "balance_corrections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correction_date": {
+          "name": "correction_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "balance": {
+          "name": "balance",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "balance_corrections_user_id_pto_settings_user_id_fk": {
+          "name": "balance_corrections_user_id_pto_settings_user_id_fk",
+          "tableFrom": "balance_corrections",
+          "tableTo": "pto_settings",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.custom_paid_holidays": {
+      "name": "custom_paid_holidays",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holiday_date": {
+          "name": "holiday_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "custom_paid_holidays_user_id_pto_settings_user_id_fk": {
+          "name": "custom_paid_holidays_user_id_pto_settings_user_id_fk",
+          "tableFrom": "custom_paid_holidays",
+          "tableTo": "pto_settings",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "custom_paid_holidays_user_id_holiday_date_pk": {
+          "name": "custom_paid_holidays_user_id_holiday_date_pk",
+          "columns": [
+            "user_id",
+            "holiday_date"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pto_settings": {
+      "name": "pto_settings",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "accrual_amount": {
+          "name": "accrual_amount",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accrual_frequency": {
+          "name": "accrual_frequency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "initial_setup_complete": {
+          "name": "initial_setup_complete",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "paid_holiday_ids": {
+          "name": "paid_holiday_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "ARRAY[]::text[]"
+        },
+        "semimonthly_first_day": {
+          "name": "semimonthly_first_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "semimonthly_mode": {
+          "name": "semimonthly_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'daysOfMonth'"
+        },
+        "semimonthly_second_day": {
+          "name": "semimonthly_second_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 15
+        },
+        "semimonthly_weekday": {
+          "name": "semimonthly_weekday",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "starting_balance": {
+          "name": "starting_balance",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "starting_date": {
+          "name": "starting_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.scheduled_pto": {
+      "name": "scheduled_pto",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pto_date": {
+          "name": "pto_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hours": {
+          "name": "hours",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "scheduled_pto_user_id_pto_settings_user_id_fk": {
+          "name": "scheduled_pto_user_id_pto_settings_user_id_fk",
+          "tableFrom": "scheduled_pto",
+          "tableTo": "pto_settings",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "scheduled_pto_user_id_pto_date_pk": {
+          "name": "scheduled_pto_user_id_pto_date_pk",
+          "columns": [
+            "user_id",
+            "pto_date"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -83,6 +83,7 @@ const {
   frequencyLabel,
   calculateBalanceOn,
   getAccrualDatesBetween,
+  getAccrualTermsOn,
   getScheduledPtoHours,
   saveSettingsNow,
   setScheduledPtoHours
@@ -129,7 +130,7 @@ const selectedDayLabel = computed(() =>
   })
 )
 const selectedDayAccrualLabel = computed(() =>
-  isAccrualDate(effectiveSelectedDay.value) ? `+${formatHours(settings.value.accrualAmount ?? 0)}h` : 'None'
+  isAccrualDate(effectiveSelectedDay.value) ? `+${formatHours(getAccrualTermsOn(effectiveSelectedDay.value).accrualAmount ?? 0)}h` : 'None'
 )
 const selectedHolidayLabel = computed(() =>
   getHolidayLabel(effectiveSelectedDay.value) || (isSelectedDayPaidHoliday.value ? 'Paid Holiday' : '')

@@ -1,11 +1,12 @@
 import { and, eq } from 'drizzle-orm'
 import { defaultPaidHolidayIds } from '../../app/utils/holidays'
-import type { BalanceAdjustment, PtoSettings } from '../../app/composables/usePtoSettings'
-import { balanceCorrections, customPaidHolidays, ptoSettings, scheduledPto } from '../db/schema'
+import type { AccrualAdjustment, BalanceAdjustment, PtoSettings } from '../../app/composables/usePtoSettings'
+import { accrualAdjustments, balanceCorrections, customPaidHolidays, ptoSettings, scheduledPto } from '../db/schema'
 import { getDb } from '../utils/db'
 
 const fallbackSettings: PtoSettings = {
   accrualAmount: null,
+  accrualAdjustments: [],
   accrualFrequency: '',
   balanceAdjustments: [],
   customPaidHolidayDates: [],
@@ -25,14 +26,26 @@ export async function getPtoSettingsForUser(userId: string) {
   const [settingsRow] = await db.select().from(ptoSettings).where(eq(ptoSettings.userId, userId)).limit(1)
   if (!settingsRow) return null
 
-  const [adjustmentRows, scheduledRows, holidayRows] = await Promise.all([
+  const [adjustmentRows, accrualRows, scheduledRows, holidayRows] = await Promise.all([
     db.select().from(balanceCorrections).where(eq(balanceCorrections.userId, userId)),
+    db.select().from(accrualAdjustments).where(eq(accrualAdjustments.userId, userId)),
     db.select().from(scheduledPto).where(eq(scheduledPto.userId, userId)),
     db.select().from(customPaidHolidays).where(eq(customPaidHolidays.userId, userId))
   ])
 
   return normalizeSettingsPayload({
     accrualAmount: toNullableNumber(settingsRow.accrualAmount),
+    accrualAdjustments: accrualRows.map((adjustment): AccrualAdjustment => ({
+      accrualAmount: toNullableNumber(adjustment.accrualAmount),
+      accrualFrequency: adjustment.accrualFrequency ?? '',
+      id: adjustment.id,
+      date: adjustment.adjustmentDate,
+      note: adjustment.note,
+      semimonthlyFirstDay: adjustment.semimonthlyFirstDay,
+      semimonthlyMode: adjustment.semimonthlyMode ?? '',
+      semimonthlySecondDay: adjustment.semimonthlySecondDay,
+      semimonthlyWeekday: adjustment.semimonthlyWeekday
+    })),
     accrualFrequency: settingsRow.accrualFrequency,
     balanceAdjustments: adjustmentRows.map((adjustment): BalanceAdjustment => ({
       id: adjustment.id,
@@ -94,6 +107,7 @@ export async function savePtoSettingsForUser(userId: string, payload: PtoSetting
     })
 
   await Promise.all([
+    db.delete(accrualAdjustments).where(eq(accrualAdjustments.userId, userId)),
     db.delete(balanceCorrections).where(eq(balanceCorrections.userId, userId)),
     db.delete(customPaidHolidays).where(eq(customPaidHolidays.userId, userId)),
     db.delete(scheduledPto).where(eq(scheduledPto.userId, userId))
@@ -104,8 +118,24 @@ export async function savePtoSettingsForUser(userId: string, payload: PtoSetting
       id: adjustment.id,
       userId,
       correctionDate: adjustment.date,
-      balance: adjustment.balance.toString(),
+      balance: toNumericString(adjustment.balance),
       note: adjustment.note,
+      updatedAt: new Date()
+    })))
+  }
+
+  if (normalized.accrualAdjustments.length > 0) {
+    await db.insert(accrualAdjustments).values(normalized.accrualAdjustments.map((adjustment) => ({
+      id: adjustment.id,
+      userId,
+      adjustmentDate: adjustment.date,
+      accrualAmount: toNumericString(adjustment.accrualAmount),
+      accrualFrequency: adjustment.accrualFrequency,
+      note: adjustment.note,
+      semimonthlyFirstDay: adjustment.semimonthlyFirstDay,
+      semimonthlyMode: adjustment.semimonthlyMode,
+      semimonthlySecondDay: adjustment.semimonthlySecondDay,
+      semimonthlyWeekday: adjustment.semimonthlyWeekday,
       updatedAt: new Date()
     })))
   }
@@ -132,6 +162,7 @@ export async function savePtoSettingsForUser(userId: string, payload: PtoSetting
 export async function resetPtoSettingsForUser(userId: string) {
   const db = getDb()
   await Promise.all([
+    db.delete(accrualAdjustments).where(eq(accrualAdjustments.userId, userId)),
     db.delete(balanceCorrections).where(eq(balanceCorrections.userId, userId)),
     db.delete(customPaidHolidays).where(eq(customPaidHolidays.userId, userId)),
     db.delete(scheduledPto).where(eq(scheduledPto.userId, userId))
@@ -166,17 +197,62 @@ export async function setCustomPaidHolidayForUser(userId: string, dateKey: strin
 }
 
 function normalizeSettingsPayload(value: PtoSettings): PtoSettings {
+  const terms = {
+    accrualAmount: toNullableNumber(value.accrualAmount),
+    accrualFrequency: normalizeAccrualFrequency(value.accrualFrequency),
+    semimonthlyFirstDay: normalizeDayOfMonth(value.semimonthlyFirstDay, fallbackSettings.semimonthlyFirstDay),
+    semimonthlyMode: normalizeSemimonthlyMode(value.semimonthlyMode),
+    semimonthlySecondDay: normalizeDayOfMonth(value.semimonthlySecondDay, fallbackSettings.semimonthlySecondDay),
+    semimonthlyWeekday: normalizeWeekday(value.semimonthlyWeekday, fallbackSettings.semimonthlyWeekday)
+  }
+
   return {
     ...fallbackSettings,
     ...value,
-    accrualAmount: toNullableNumber(value.accrualAmount),
-    balanceAdjustments: Array.isArray(value.balanceAdjustments) ? value.balanceAdjustments : [],
+    ...terms,
+    accrualAdjustments: normalizeAccrualAdjustments(value.accrualAdjustments),
+    balanceAdjustments: normalizeBalanceAdjustments(value.balanceAdjustments),
     customPaidHolidayDates: normalizeDateKeys(value.customPaidHolidayDates),
     paidHolidayIds: Array.isArray(value.paidHolidayIds) ? value.paidHolidayIds : [...defaultPaidHolidayIds],
     scheduledPto: normalizeScheduledPto(value.scheduledPto),
     startingBalance: toNullableNumber(value.startingBalance),
     startingDate: value.startingDate || ''
   }
+}
+
+function normalizeBalanceAdjustments(value: PtoSettings['balanceAdjustments']) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .filter((adjustment) => isDateKey(adjustment.date))
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .map((adjustment) => ({
+      id: adjustment.id || crypto.randomUUID(),
+      date: adjustment.date,
+      balance: toNullableNumber(adjustment.balance),
+      note: adjustment.note || ''
+    }))
+    .filter((adjustment): adjustment is BalanceAdjustment => adjustment.balance !== null)
+}
+
+function normalizeAccrualAdjustments(value: PtoSettings['accrualAdjustments']) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .filter((adjustment) => isDateKey(adjustment.date))
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .map((adjustment) => ({
+      id: adjustment.id || crypto.randomUUID(),
+      date: adjustment.date,
+      note: adjustment.note || '',
+      accrualAmount: toNullableNumber(adjustment.accrualAmount),
+      accrualFrequency: normalizeAccrualFrequency(adjustment.accrualFrequency),
+      semimonthlyFirstDay: normalizeOptionalDayOfMonth(adjustment.semimonthlyFirstDay),
+      semimonthlyMode: adjustment.semimonthlyMode ? normalizeSemimonthlyMode(adjustment.semimonthlyMode) : '',
+      semimonthlySecondDay: normalizeOptionalDayOfMonth(adjustment.semimonthlySecondDay),
+      semimonthlyWeekday: normalizeOptionalWeekday(adjustment.semimonthlyWeekday)
+    }))
+    .filter(hasAccrualOverride)
 }
 
 function normalizeScheduledPto(value: PtoSettings['scheduledPto']) {
@@ -190,6 +266,15 @@ function normalizeScheduledPto(value: PtoSettings['scheduledPto']) {
 
     return scheduled
   }, {})
+}
+
+function hasAccrualOverride(adjustment: AccrualAdjustment) {
+  return adjustment.accrualAmount !== null ||
+    Boolean(adjustment.accrualFrequency) ||
+    adjustment.semimonthlyFirstDay !== null ||
+    Boolean(adjustment.semimonthlyMode) ||
+    adjustment.semimonthlySecondDay !== null ||
+    adjustment.semimonthlyWeekday !== null
 }
 
 function normalizeDateKeys(value: string[]) {
@@ -209,4 +294,44 @@ function toNullableNumber(value: unknown) {
 
 function toNumericString(value: number | null) {
   return value === null ? null : value.toString()
+}
+
+function normalizeAccrualFrequency(value: unknown): PtoSettings['accrualFrequency'] {
+  if (value === 'weekly' || value === 'biweekly' || value === 'semimonthly' || value === 'monthly') {
+    return value
+  }
+
+  return ''
+}
+
+function normalizeSemimonthlyMode(value: unknown): PtoSettings['semimonthlyMode'] {
+  return value === 'dayOfWeek' ? 'dayOfWeek' : 'daysOfMonth'
+}
+
+function normalizeDayOfMonth(value: unknown, fallback: number) {
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) return fallback
+  return Math.min(31, Math.max(1, Math.trunc(numberValue)))
+}
+
+function normalizeWeekday(value: unknown, fallback: number) {
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) return fallback
+  return Math.min(6, Math.max(0, Math.trunc(numberValue)))
+}
+
+function normalizeOptionalDayOfMonth(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) return null
+  return Math.min(31, Math.max(1, Math.trunc(numberValue)))
+}
+
+function normalizeOptionalWeekday(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) return null
+  return Math.min(6, Math.max(0, Math.trunc(numberValue)))
 }

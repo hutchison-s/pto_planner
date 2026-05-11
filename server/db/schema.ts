@@ -28,6 +28,21 @@ export const balanceCorrections = pgTable('balance_corrections', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 })
 
+export const accrualAdjustments = pgTable('accrual_adjustments', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => ptoSettings.userId, { onDelete: 'cascade' }),
+  adjustmentDate: date('adjustment_date').notNull(),
+  accrualAmount: numeric('accrual_amount', { precision: 8, scale: 2 }),
+  accrualFrequency: text('accrual_frequency').$type<AccrualFrequency | ''>(),
+  note: text('note').notNull().default(''),
+  semimonthlyFirstDay: integer('semimonthly_first_day'),
+  semimonthlyMode: text('semimonthly_mode').$type<SemimonthlyAccrualMode>(),
+  semimonthlySecondDay: integer('semimonthly_second_day'),
+  semimonthlyWeekday: integer('semimonthly_weekday'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+})
+
 export const scheduledPto = pgTable('scheduled_pto', {
   userId: text('user_id').notNull().references(() => ptoSettings.userId, { onDelete: 'cascade' }),
   ptoDate: date('pto_date').notNull(),
@@ -44,6 +59,7 @@ export const customPaidHolidays = pgTable('custom_paid_holidays', {
 }))
 
 export const ptoSettingsRelations = relations(ptoSettings, ({ many }) => ({
+  accrualAdjustments: many(accrualAdjustments),
   balanceCorrections: many(balanceCorrections),
   customPaidHolidays: many(customPaidHolidays),
   scheduledPto: many(scheduledPto)
@@ -52,6 +68,13 @@ export const ptoSettingsRelations = relations(ptoSettings, ({ many }) => ({
 export const balanceCorrectionsRelations = relations(balanceCorrections, ({ one }) => ({
   settings: one(ptoSettings, {
     fields: [balanceCorrections.userId],
+    references: [ptoSettings.userId]
+  })
+}))
+
+export const accrualAdjustmentsRelations = relations(accrualAdjustments, ({ one }) => ({
+  settings: one(ptoSettings, {
+    fields: [accrualAdjustments.userId],
     references: [ptoSettings.userId]
   })
 }))

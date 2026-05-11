@@ -53,7 +53,7 @@ const sections = computed(() => [
   },
   {
     eyebrow: 'Adjustments',
-    title: 'Balance corrections',
+    title: 'Balance & Accrual Rate',
     summary: adjustmentsSummary.value,
     to: '/settings/adjustments'
   },
@@ -78,10 +78,11 @@ const initialSummary = computed(() => {
 })
 
 const adjustmentsSummary = computed(() => {
-  const count = settings.value.balanceAdjustments.length
-  if (count === 0) return 'No balance corrections.'
+  const balanceCount = settings.value.balanceAdjustments.length
+  const accrualCount = settings.value.accrualAdjustments.length
+  if (balanceCount === 0 && accrualCount === 0) return 'No adjustments.'
 
-  return `${count} balance correction${count === 1 ? '' : 's'} saved.`
+  return `${balanceCount} balance correction${balanceCount === 1 ? '' : 's'}, ${accrualCount} accrual adjustment${accrualCount === 1 ? '' : 's'} saved.`
 })
 
 function formatDate(value: string) {

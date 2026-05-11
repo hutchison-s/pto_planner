@@ -7,6 +7,7 @@ export type SemimonthlyAccrualMode = 'daysOfMonth' | 'dayOfWeek'
 
 export type PtoSettings = {
   accrualAmount: number | null
+  accrualAdjustments: AccrualAdjustment[]
   accrualFrequency: AccrualFrequency | ''
   balanceAdjustments: BalanceAdjustment[]
   customPaidHolidayDates: string[]
@@ -28,8 +29,35 @@ export type BalanceAdjustment = {
   note: string
 }
 
+export type AccrualAdjustment = {
+  accrualAmount: number | null
+  accrualFrequency: AccrualFrequency | ''
+  id: string
+  date: string
+  note: string
+  semimonthlyFirstDay: number | null
+  semimonthlyMode: SemimonthlyAccrualMode | ''
+  semimonthlySecondDay: number | null
+  semimonthlyWeekday: number | null
+}
+
+type AccrualTerms = Pick<
+  PtoSettings,
+  'accrualAmount' |
+  'accrualFrequency' |
+  'semimonthlyFirstDay' |
+  'semimonthlyMode' |
+  'semimonthlySecondDay' |
+  'semimonthlyWeekday'
+>
+
+type AdjustmentEvent =
+  | { adjustment: BalanceAdjustment, date: string, type: 'balance' }
+  | { adjustment: AccrualAdjustment, date: string, type: 'accrual' }
+
 const defaultSettings: PtoSettings = {
   accrualAmount: null,
+  accrualAdjustments: [],
   accrualFrequency: '',
   balanceAdjustments: [],
   customPaidHolidayDates: [],
@@ -83,6 +111,7 @@ export function usePtoSettings() {
     frequencyLabel,
     calculateBalanceOn,
     getAccrualDatesBetween,
+    getAccrualTermsOn,
     getScheduledPtoHours,
     setScheduledPtoHours,
     resetBalanceCorrections,
@@ -96,35 +125,128 @@ export function calculateBalanceOn(targetDate: Date) {
   if (!hasCompleteInitialSetup(settings.value)) return 0
 
   const startDate = parseLocalDate(settings.value.startingDate)
-  const startingBalance = Number(settings.value.startingBalance ?? 0)
-  const accrualAmount = Number(settings.value.accrualAmount ?? 0)
-  if (targetDate < startDate) return startingBalance
+  let balance = Number(settings.value.startingBalance ?? 0)
+  if (targetDate < startDate) return balance
 
-  const anchor = getBalanceAnchor(startDate, targetDate, startingBalance)
-  const calculationStartDate = addDays(anchor.date, 1)
-  const accruedHours = getAccrualDatesBetween(calculationStartDate, targetDate).length * accrualAmount
-  const scheduledHours = getScheduledPtoHoursBetween(calculationStartDate, targetDate)
+  let cursorDate = startDate
+  let terms = getInitialAccrualTerms()
+  let termsAnchorDate = startDate
+  let includeAnchorDate = false
 
-  return anchor.balance + accruedHours - scheduledHours
+  for (const event of getSortedAdjustments()) {
+    const adjustmentDate = parseLocalDate(event.date)
+    if (adjustmentDate < startDate || adjustmentDate > targetDate) continue
+
+    if (event.type === 'accrual') {
+      const previousSegmentEnd = addDays(adjustmentDate, -1)
+      const segmentStart = addDays(cursorDate, 1)
+      balance += getAccruedHoursBetween(segmentStart, previousSegmentEnd, terms, termsAnchorDate, includeAnchorDate)
+      balance -= getScheduledPtoHoursBetween(segmentStart, previousSegmentEnd)
+
+      const nextTerms = applyAdjustmentTerms(terms, event.adjustment)
+      if (hasCadenceOverride(event.adjustment)) {
+        termsAnchorDate = adjustmentDate
+        includeAnchorDate = true
+      }
+      terms = nextTerms
+      cursorDate = previousSegmentEnd
+      continue
+    }
+
+    const segmentStart = addDays(cursorDate, 1)
+    balance += getAccruedHoursBetween(segmentStart, adjustmentDate, terms, termsAnchorDate, includeAnchorDate)
+    balance -= getScheduledPtoHoursBetween(segmentStart, adjustmentDate)
+
+    balance = event.adjustment.balance
+    cursorDate = adjustmentDate
+  }
+
+  const segmentStart = addDays(cursorDate, 1)
+  balance += getAccruedHoursBetween(segmentStart, targetDate, terms, termsAnchorDate, includeAnchorDate)
+  balance -= getScheduledPtoHoursBetween(segmentStart, targetDate)
+
+  return balance
 }
 
 export function getAccrualDatesBetween(startDate: Date, endDate: Date) {
   if (!hasCompleteInitialSetup(settings.value)) return []
 
-  const anchorDate = parseLocalDate(settings.value.startingDate)
-  if (settings.value.accrualFrequency === 'semimonthly') {
-    return getSemimonthlyAccrualDatesBetween(anchorDate, startDate, endDate)
+  const initialDate = parseLocalDate(settings.value.startingDate)
+  let cursorDate = initialDate
+  let terms = getInitialAccrualTerms()
+  let termsAnchorDate = initialDate
+  let includeAnchorDate = false
+  const dates: Date[] = []
+
+  for (const adjustment of getSortedAccrualAdjustments()) {
+    const adjustmentDate = parseLocalDate(adjustment.date)
+    if (adjustmentDate > endDate) break
+
+    const previousSegmentEnd = addDays(adjustmentDate, -1)
+    dates.push(...getAccrualDatesForTerms(
+      termsAnchorDate,
+      maxDate(startDate, addDays(cursorDate, 1)),
+      minDate(endDate, previousSegmentEnd),
+      terms,
+      includeAnchorDate
+    ))
+
+    const nextTerms = applyAdjustmentTerms(terms, adjustment)
+    if (hasCadenceOverride(adjustment)) {
+      termsAnchorDate = adjustmentDate
+      includeAnchorDate = true
+    }
+    terms = nextTerms
+    cursorDate = previousSegmentEnd
+  }
+
+  dates.push(...getAccrualDatesForTerms(
+    termsAnchorDate,
+    maxDate(startDate, addDays(cursorDate, 1)),
+    endDate,
+    terms,
+    includeAnchorDate
+  ))
+
+  return dates.sort((left, right) => left.getTime() - right.getTime())
+}
+
+export function getAccrualTermsOn(targetDate: Date) {
+  let terms = getInitialAccrualTerms()
+  if (!hasCompleteInitialSetup(settings.value)) return terms
+
+  for (const event of getSortedAdjustments()) {
+    if (parseLocalDate(event.date) > targetDate) break
+    if (event.type === 'accrual') {
+      terms = applyAdjustmentTerms(terms, event.adjustment)
+    }
+  }
+
+  return terms
+}
+
+function getAccruedHoursBetween(startDate: Date, endDate: Date, terms: AccrualTerms, anchorDate: Date, includeAnchorDate = false) {
+  if (endDate < startDate) return 0
+
+  return getAccrualDatesForTerms(anchorDate, startDate, endDate, terms, includeAnchorDate).length * Number(terms.accrualAmount ?? 0)
+}
+
+function getAccrualDatesForTerms(anchorDate: Date, startDate: Date, endDate: Date, terms: AccrualTerms, includeAnchorDate = false) {
+  if (endDate < startDate || !terms.accrualFrequency) return []
+
+  if (terms.accrualFrequency === 'semimonthly') {
+    return getSemimonthlyAccrualDatesBetween(anchorDate, startDate, endDate, terms, includeAnchorDate)
   }
 
   const dates: Date[] = []
   let cursor = new Date(anchorDate)
 
   while (cursor <= endDate) {
-    if (cursor >= startDate && cursor > anchorDate) {
+    if (cursor >= startDate && (cursor > anchorDate || (includeAnchorDate && isSameDay(cursor, anchorDate)))) {
       dates.push(new Date(cursor))
     }
 
-    cursor = nextAccrualDate(cursor, settings.value.accrualFrequency as AccrualFrequency)
+    cursor = nextAccrualDate(cursor, terms.accrualFrequency as AccrualFrequency)
   }
 
   return dates
@@ -133,6 +255,7 @@ export function getAccrualDatesBetween(startDate: Date, endDate: Date) {
 export function resetSettings() {
   settings.value = {
     ...defaultSettings,
+    accrualAdjustments: [],
     balanceAdjustments: [],
     customPaidHolidayDates: [],
     scheduledPto: {}
@@ -187,22 +310,6 @@ function getScheduledPtoHoursBetween(startDate: Date, endDate: Date) {
   }, 0)
 }
 
-function getBalanceAnchor(startDate: Date, targetDate: Date, startingBalance: number) {
-  return settings.value.balanceAdjustments.reduce((latest, adjustment) => {
-    const date = parseLocalDate(adjustment.date)
-
-    if (date < startDate || date > targetDate || date < latest.date) return latest
-
-    return {
-      date,
-      balance: adjustment.balance
-    }
-  }, {
-    date: startDate,
-    balance: startingBalance
-  })
-}
-
 function nextAccrualDate(date: Date, frequency: AccrualFrequency) {
   if (frequency === 'weekly') return addDays(date, 7)
   if (frequency === 'biweekly') return addDays(date, 14)
@@ -213,14 +320,18 @@ function nextAccrualDate(date: Date, frequency: AccrualFrequency) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 1)
 }
 
-function getSemimonthlyAccrualDatesBetween(anchorDate: Date, startDate: Date, endDate: Date) {
+function getSemimonthlyAccrualDatesBetween(anchorDate: Date, startDate: Date, endDate: Date, terms: AccrualTerms, includeAnchorDate = false) {
   const dates: Date[] = []
   let cursor = startOfMonth(anchorDate)
   const endMonth = startOfMonth(endDate)
 
   while (cursor <= endMonth) {
-    for (const accrualDate of getSemimonthlyDatesForMonth(cursor)) {
-      if (accrualDate > anchorDate && accrualDate >= startDate && accrualDate <= endDate) {
+    for (const accrualDate of getSemimonthlyDatesForMonth(cursor, terms)) {
+      if (
+        accrualDate >= startDate &&
+        accrualDate <= endDate &&
+        (accrualDate > anchorDate || (includeAnchorDate && isSameDay(accrualDate, anchorDate)))
+      ) {
         dates.push(accrualDate)
       }
     }
@@ -231,19 +342,19 @@ function getSemimonthlyAccrualDatesBetween(anchorDate: Date, startDate: Date, en
   return dates.sort((left, right) => left.getTime() - right.getTime())
 }
 
-function getSemimonthlyDatesForMonth(monthDate: Date) {
-  if (settings.value.semimonthlyMode === 'dayOfWeek') {
+function getSemimonthlyDatesForMonth(monthDate: Date, terms: AccrualTerms) {
+  if (terms.semimonthlyMode === 'dayOfWeek') {
     return [
-      getNthWeekdayOfMonth(monthDate, settings.value.semimonthlyWeekday, 1),
-      getNthWeekdayOfMonth(monthDate, settings.value.semimonthlyWeekday, 3)
+      getNthWeekdayOfMonth(monthDate, terms.semimonthlyWeekday, 1),
+      getNthWeekdayOfMonth(monthDate, terms.semimonthlyWeekday, 3)
     ]
   }
 
   const year = monthDate.getFullYear()
   const month = monthDate.getMonth()
   const lastDay = endOfMonth(monthDate).getDate()
-  const firstDay = Math.min(settings.value.semimonthlyFirstDay, lastDay)
-  const secondDay = Math.min(settings.value.semimonthlySecondDay, lastDay)
+  const firstDay = Math.min(terms.semimonthlyFirstDay, lastDay)
+  const secondDay = Math.min(terms.semimonthlySecondDay, lastDay)
 
   return [
     new Date(year, month, firstDay),
@@ -267,23 +378,28 @@ function normalizeSettings(value: Partial<PtoSettings>) {
     value.accrualAmount === 4 &&
     value.accrualFrequency === 'biweekly' &&
     Boolean(value.startingDate) &&
-    normalizeBalanceAdjustments(value.balanceAdjustments).length === 0 &&
+    (!Array.isArray(value.accrualAdjustments) || value.accrualAdjustments.length === 0) &&
+    (!Array.isArray(value.balanceAdjustments) || value.balanceAdjustments.length === 0) &&
     Object.keys(value.scheduledPto ?? {}).length === 0
 
   if (shouldClearLegacyDefaults) {
     return { ...defaultSettings }
   }
 
-  const normalized = {
+  const normalizedTerms = {
     accrualAmount: normalizeOptionalNumber(value.accrualAmount),
     accrualFrequency: normalizeAccrualFrequency(value.accrualFrequency),
-    balanceAdjustments: normalizeBalanceAdjustments(value.balanceAdjustments),
-    customPaidHolidayDates: normalizeDateKeys(value.customPaidHolidayDates),
-    paidHolidayIds: normalizePaidHolidayIds(value.paidHolidayIds),
     semimonthlyFirstDay: normalizeDayOfMonth(value.semimonthlyFirstDay, defaultSettings.semimonthlyFirstDay),
     semimonthlyMode: normalizeSemimonthlyMode(value.semimonthlyMode),
     semimonthlySecondDay: normalizeDayOfMonth(value.semimonthlySecondDay, defaultSettings.semimonthlySecondDay),
-    semimonthlyWeekday: normalizeWeekday(value.semimonthlyWeekday, defaultSettings.semimonthlyWeekday),
+    semimonthlyWeekday: normalizeWeekday(value.semimonthlyWeekday, defaultSettings.semimonthlyWeekday)
+  }
+  const normalized = {
+    ...normalizedTerms,
+    accrualAdjustments: normalizeAccrualAdjustments(value.accrualAdjustments),
+    balanceAdjustments: normalizeBalanceAdjustments(value.balanceAdjustments),
+    customPaidHolidayDates: normalizeDateKeys(value.customPaidHolidayDates),
+    paidHolidayIds: normalizePaidHolidayIds(value.paidHolidayIds),
     startingBalance: normalizeOptionalNumber(value.startingBalance),
     initialSetupComplete: false,
     startingDate: value.startingDate ?? defaultSettings.startingDate,
@@ -390,6 +506,22 @@ function normalizeWeekday(value: unknown, fallback: number) {
   return Math.min(6, Math.max(0, Math.trunc(numberValue)))
 }
 
+function normalizeOptionalDayOfMonth(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) return null
+  return Math.min(31, Math.max(1, Math.trunc(numberValue)))
+}
+
+function normalizeOptionalWeekday(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) return null
+  return Math.min(6, Math.max(0, Math.trunc(numberValue)))
+}
+
 function normalizePaidHolidayIds(value: unknown) {
   if (!Array.isArray(value)) return [...defaultPaidHolidayIds]
 
@@ -411,24 +543,110 @@ function hasFiniteNumber(value: unknown) {
   return Number.isFinite(Number(value))
 }
 
-function normalizeBalanceAdjustments(value?: BalanceAdjustment[]) {
+function normalizeBalanceAdjustments(value: BalanceAdjustment[] | undefined) {
   if (!Array.isArray(value)) return []
 
   return value
     .filter((adjustment) => adjustment.date)
+    .sort((left, right) => left.date.localeCompare(right.date))
     .map((adjustment) => ({
       id: adjustment.id || createId(),
       date: adjustment.date,
-      balance: normalizeAdjustmentBalance(adjustment),
+      balance: normalizeAdjustmentBalance(adjustment) ?? 0,
       note: adjustment.note || ''
     }))
 }
 
+function normalizeAccrualAdjustments(value: AccrualAdjustment[] | undefined) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .filter((adjustment) => adjustment.date)
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .map((adjustment) => ({
+      id: adjustment.id || createId(),
+      date: adjustment.date,
+      note: adjustment.note || '',
+      ...normalizeAdjustmentTerms(adjustment)
+    }))
+    .filter(hasAccrualOverride)
+}
+
 function normalizeAdjustmentBalance(adjustment: BalanceAdjustment | (Partial<BalanceAdjustment> & { hours?: number })) {
   const balance = 'balance' in adjustment ? adjustment.balance : adjustment.hours
-  const numericBalance = Number(balance ?? 0)
+  if (balance === null || balance === undefined || balance === '') return null
 
-  return Number.isFinite(numericBalance) ? numericBalance : 0
+  const numericBalance = Number(balance)
+  return Number.isFinite(numericBalance) ? numericBalance : null
+}
+
+function normalizeAdjustmentTerms(value: Partial<AccrualAdjustment>): Omit<AccrualAdjustment, 'id' | 'date' | 'note'> {
+  return {
+    accrualAmount: normalizeOptionalNumber(value.accrualAmount),
+    accrualFrequency: normalizeAccrualFrequency(value.accrualFrequency),
+    semimonthlyFirstDay: normalizeOptionalDayOfMonth(value.semimonthlyFirstDay),
+    semimonthlyMode: value.semimonthlyMode ? normalizeSemimonthlyMode(value.semimonthlyMode) : '',
+    semimonthlySecondDay: normalizeOptionalDayOfMonth(value.semimonthlySecondDay),
+    semimonthlyWeekday: normalizeOptionalWeekday(value.semimonthlyWeekday)
+  }
+}
+
+function getInitialAccrualTerms(): AccrualTerms {
+  return {
+    accrualAmount: settings.value.accrualAmount,
+    accrualFrequency: settings.value.accrualFrequency,
+    semimonthlyFirstDay: settings.value.semimonthlyFirstDay,
+    semimonthlyMode: settings.value.semimonthlyMode,
+    semimonthlySecondDay: settings.value.semimonthlySecondDay,
+    semimonthlyWeekday: settings.value.semimonthlyWeekday
+  }
+}
+
+function applyAdjustmentTerms(terms: AccrualTerms, adjustment: AccrualAdjustment): AccrualTerms {
+  return {
+    accrualAmount: adjustment.accrualAmount ?? terms.accrualAmount,
+    accrualFrequency: adjustment.accrualFrequency || terms.accrualFrequency,
+    semimonthlyFirstDay: adjustment.semimonthlyFirstDay ?? terms.semimonthlyFirstDay,
+    semimonthlyMode: adjustment.semimonthlyMode || terms.semimonthlyMode,
+    semimonthlySecondDay: adjustment.semimonthlySecondDay ?? terms.semimonthlySecondDay,
+    semimonthlyWeekday: adjustment.semimonthlyWeekday ?? terms.semimonthlyWeekday
+  }
+}
+
+function hasCadenceOverride(adjustment: AccrualAdjustment) {
+  return Boolean(adjustment.accrualFrequency) ||
+    adjustment.semimonthlyFirstDay !== null ||
+    Boolean(adjustment.semimonthlyMode) ||
+    adjustment.semimonthlySecondDay !== null ||
+    adjustment.semimonthlyWeekday !== null
+}
+
+function hasAccrualOverride(adjustment: AccrualAdjustment) {
+  return adjustment.accrualAmount !== null || hasCadenceOverride(adjustment)
+}
+
+function getSortedAdjustments(): AdjustmentEvent[] {
+  return [
+    ...settings.value.balanceAdjustments.map((adjustment) => ({
+      adjustment,
+      date: adjustment.date,
+      type: 'balance' as const
+    })),
+    ...settings.value.accrualAdjustments.map((adjustment) => ({
+      adjustment,
+      date: adjustment.date,
+      type: 'accrual' as const
+    }))
+  ].sort((left, right) => {
+    const dateComparison = left.date.localeCompare(right.date)
+    if (dateComparison !== 0) return dateComparison
+    if (left.type === right.type) return 0
+    return left.type === 'accrual' ? -1 : 1
+  })
+}
+
+function getSortedAccrualAdjustments() {
+  return [...settings.value.accrualAdjustments].sort((left, right) => left.date.localeCompare(right.date))
 }
 
 export function createId() {
@@ -469,6 +687,14 @@ export function addMonths(date: Date, amount: number) {
 
 export function addDays(date: Date, amount: number) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount)
+}
+
+function maxDate(left: Date, right: Date) {
+  return left > right ? left : right
+}
+
+function minDate(left: Date, right: Date) {
+  return left < right ? left : right
 }
 
 export function isSameDay(left: Date, right: Date) {
